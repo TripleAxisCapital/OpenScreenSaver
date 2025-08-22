@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>OpenCounsel — Gradient Studio</title>
+<meta name="description" content="Apple-style animated gradient background with live controls." />
+<style>
+  :root{
+    --ink:#0A0D10;
+    --line:rgba(255,255,255,.08);
+    --panel:rgba(0,0,0,.72);
+    --panel-2:rgba(0,0,0,.55);
+    --radius:20px;
+    --shadow:0 10px 30px rgba(0,0,0,.35);
+    --accent:#00CFFF;
+  }
+  /* Reset / base */
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:#000; color:#fff; font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    overflow:hidden;
+  }
+
+  /* Layers */
+  #stage{position:fixed; inset:0; overflow:hidden}
+  canvas#bg{position:absolute; inset:0; width:100%; height:100%; display:block; filter:blur(var(--blur-px, 40px)) saturate(120%);}
+  /* Optional CSS gradient layer for the "Linear Drift" style */
+  #css-bg{
+    position:absolute; inset:-40% -10% -10% -10%;
+    background: linear-gradient(120deg,#0B1B2B,#0E6F5C,#00CFFF);
+    background-size:200% 200%;
+    animation: drift var(--drift-s, 18s) linear infinite;
+    filter: blur(var(--blur-px, 40px)) saturate(120%);
+    opacity:0; pointer-events:none;
+  }
+  @keyframes drift{
+    0%{ transform:rotate(0deg) scale(1.2); background-position:0% 50%; filter:hue-rotate(0deg) blur(var(--blur-px, 40px));}
+    50%{ transform:rotate(2deg) scale(1.22); background-position:100% 50%; filter:hue-rotate(8deg) blur(var(--blur-px, 40px));}
+    100%{ transform:rotate(0deg) scale(1.2); background-position:0% 50%; filter:hue-rotate(0deg) blur(var(--blur-px, 40px));}
+  }
+
+  /* Subtle vignette for depth */
+  .vignette{
+    position:absolute; inset:-20px; pointer-events:none;
+    background: radial-gradient(120% 140% at 50% 50%, rgba(0,0,0,0) 0%, rgba(0,0,0,.08) 60%, rgba(0,0,0,.18) 100%);
+    mix-blend-mode:multiply;
+  }
+
+  /* Logo toggle button */
+  .logo-btn{
+    position:fixed; right:20px; bottom:20px; z-index:40;
+    width:56px; height:56px; border-radius:18px;
+    background:rgba(255,255,255,.06); border:1px solid var(--line);
+    display:grid; place-items:center; cursor:pointer; backdrop-filter:blur(10px);
+    box-shadow:var(--shadow);
+    transition:transform .2s ease, background .2s ease, border-color .2s ease;
+  }
+  .logo-btn:hover{ transform:translateY(-2px); background:rgba(255,255,255,.10); border-color:rgba(255,255,255,.18);}
+  .logo-btn img, .logo-btn svg{ width:28px; height:28px; display:block; }
+
+  /* Settings panel (Apple-black, frosted) */
+  aside.panel{
+    position:fixed; top:0; right:0; height:100vh; width:min(420px, 92vw);
+    background:var(--panel); color:#fff; z-index:50;
+    border-left:1px solid var(--line); transform:translateX(102%);
+    transition:transform .35s cubic-bezier(.22,.61,.36,1);
+    backdrop-filter: blur(18px) saturate(140%);
+    box-shadow:-24px 0 60px rgba(0,0,0,.45);
+    display:flex; flex-direction:column;
+  }
+  body.panel-open aside.panel{ transform:translateX(0); }
+  .panel header{
+    padding:22px 22px 10px; border-bottom:1px solid var(--line);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .panel header h1{ font:600 16px/1.2 "SF Pro Text",system-ui; margin:0; letter-spacing:.2px; opacity:.9;}
+  .panel header .pill{
+    font:600 11px/1 "SF Pro Text"; padding:8px 10px; border-radius:999px;
+    background:var(--panel-2); border:1px solid var(--line); opacity:.9;
+  }
+  .panel .content{ padding:14px 20px 120px; overflow:auto; scroll-behavior:smooth; }
+  .group{ padding:14px 12px; border:1px solid var(--line); border-radius:16px; background:rgba(255,255,255,.02); margin:12px 0;}
+  .group h2{ margin:0 0 10px; font:600 12px/1 "SF Pro Text"; letter-spacing:.4px; text-transform:uppercase; opacity:.65;}
+  label{ display:block; font:500 13px/1.3 "SF Pro Text"; margin:10px 0 6px; opacity:.85;}
+  input[type="range"]{ width:100%; appearance:none; height:4px; border-radius:999px; background:rgba(255,255,255,.14); outline:none }
+  input[type="range"]::-webkit-slider-thumb{
+    appearance:none; width:18px; height:18px; border-radius:50%; background:#fff; border:1px solid rgba(0,0,0,.25); box-shadow:0 1px 2px rgba(0,0,0,.25);
+  }
+  input[type="color"]{ appearance:none; width:42px; height:28px; border-radius:8px; border:1px solid var(--line); background:#000; padding:0; cursor:pointer;}
+  select, .textish{
+    width:100%; padding:10px 12px; border-radius:12px; background:rgba(255,255,255,.04); border:1px solid var(--line); color:#fff;
+    font:500 13px/1.2 "SF Pro Text"; outline:none;
+  }
+  .row{ display:flex; gap:10px; align-items:center; }
+  .row > *{ flex:1; }
+  .chips{ display:flex; gap:8px; flex-wrap:wrap }
+  .chip{
+    padding:8px 10px; border-radius:999px; border:1px solid var(--line);
+    background:rgba(255,255,255,.03); font:600 12px/1 "SF Pro"; cursor:pointer; opacity:.9;
+  }
+  .chip[aria-checked="true"]{ background:rgba(255,255,255,.12); }
+
+  .colors{ display:grid; gap:8px; }
+  .color-row{ display:flex; gap:10px; align-items:center; }
+  .color-row input[type="color"]{ flex:0 0 42px; }
+  .color-row .del{ flex:0 0 auto; padding:8px 10px; border-radius:10px; background:rgba(255,255,255,.06); border:1px solid var(--line); cursor:pointer; }
+  .btn{
+    padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:rgba(255,255,255,.06);
+    color:#fff; font:600 13px/1 "SF Pro Text"; cursor:pointer;
+  }
+  .btn:active{ transform:translateY(1px) }
+
+  /* Footer note */
+  .panel .foot{
+    position:sticky; bottom:-1px; padding:16px 20px;
+    background:linear-gradient(180deg, rgba(0,0,0,0) 0%, var(--panel) 35%);
+    border-top:1px solid var(--line);
+  }
+
+  /* Small toast for "Saved" */
+  .toast{
+    position:fixed; left:50%; bottom:28px; transform:translateX(-50%) translateY(20px);
+    background:rgba(0,0,0,.72); color:#fff; border:1px solid var(--line); border-radius:999px; padding:10px 14px;
+    box-shadow:var(--shadow); opacity:0; transition:opacity .25s ease, transform .25s ease; z-index:60;
+    backdrop-filter:blur(10px) saturate(140%);
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* Hide scrollbars on WebKit */
+  .content::-webkit-scrollbar{ width:10px }
+  .content::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.1); border-radius:999px }
+
+  /* Prevent selection while dragging sliders */
+  .no-select{ user-select:none; -webkit-user-select:none }
+</style>
+</head>
+<body>
+  <div id="stage" class="no-select">
+    <canvas id="bg"></canvas>
+    <div id="css-bg" aria-hidden="true"></div>
+    <div class="vignette" aria-hidden="true"></div>
+  </div>
+
+  <!-- Toggle button (uses logo1.svg if present; falls back to inline mark) -->
+  <button class="logo-btn" id="toggle">
+    <img id="logoImg" src="logo1.svg" alt="OpenCounsel logo" onerror="this.replaceWith(fallbackLogo())" />
+  </button>
+
+  <!-- Settings panel -->
+  <aside class="panel" id="panel" aria-label="Gradient Settings">
+    <header>
+      <h1>Gradient Studio</h1>
+      <span class="pill">Live</span>
+    </header>
+    <div class="content">
+      <div class="group">
+        <h2>Style</h2>
+        <label for="styleSel">Animation style</label>
+        <select id="styleSel">
+          <option value="aurora">Aurora (Blobs)</option>
+          <option value="linear">Linear Drift</option>
+        </select>
+        <div class="chips" style="margin-top:10px">
+          <button class="chip" id="pauseBtn" aria-checked="false">Pause</button>
+          <button class="chip" id="resetBtn">Reset to Defaults</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <h2>Motion</h2>
+        <label>Speed <small id="speedVal" style="opacity:.6"></small></label>
+        <input id="speed" type="range" min="0" max="4" step="0.01" value="1" />
+        <div class="row">
+          <div>
+            <label>Intensity</label>
+            <input id="intensity" type="range" min="0.2" max="2.5" step="0.01" value="1.2" />
+          </div>
+          <div>
+            <label>Blur (px)</label>
+            <input id="blur" type="range" min="0" max="80" step="1" value="40" />
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <h2>Colors</h2>
+        <div class="colors" id="colors"></div>
+        <div class="row" style="margin-top:10px;">
+          <button class="btn" id="addColor">+ Add Color</button>
+          <button class="btn" id="shuffle">Shuffle</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <h2>Persistence</h2>
+        <div class="row">
+          <button class="btn" id="save">Save Preset</button>
+          <button class="btn" id="load">Load Preset</button>
+          <button class="btn" id="export">Export JSON</button>
+        </div>
+        <label style="margin-top:10px;">Preset JSON</label>
+        <textarea id="json" class="textish" rows="4" placeholder='Paste preset JSON here to import…'></textarea>
+        <div class="row" style="margin-top:10px;">
+          <button class="btn" id="import">Import</button>
+          <button class="btn" id="clear">Clear Saved</button>
+        </div>
+      </div>
+    </div>
+    <div class="foot">
+      <small style="opacity:.6">Tip: click the logo to open/close this panel. Works great on mobile too.</small>
+    </div>
+  </aside>
+
+  <div class="toast" id="toast">Saved</div>
+
+<script>
+/* ===== Utilities ===== */
+const $ = sel => document.querySelector(sel);
+const el = (tag, props={}) => Object.assign(document.createElement(tag), props);
+const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+function fallbackLogo(){
+  const svg = document.createElementNS("http://www.w3.org/2000/svg","svg");
+  svg.setAttribute("viewBox","0 0 24 24"); svg.setAttribute("width","28"); svg.setAttribute("height","28");
+  svg.innerHTML = '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#00CFFF"/><stop offset="1" stop-color="#0E6F5C"/></linearGradient></defs><rect x="2" y="2" width="20" height="20" rx="5" fill="url(#g)" /><path d="M7.2 12c0-3.2 2.6-5.8 5.8-5.8 1.5 0 2.9.6 4 1.6l-1.6 1.8c-.6-.6-1.5-1-2.4-1-2 0-3.6 1.6-3.6 3.6s1.6 3.6 3.6 3.6c.9 0 1.8-.4 2.4-1l1.6 1.8a5.8 5.8 0 0 1-4 1.6c-3.2 0-5.8-2.6-5.8-5.8z" fill="#fff" opacity=".95" /></svg>';
+  return svg;
+}
+
+/* ===== Defaults (your OpenCounsel brand vibes) ===== */
+const DEFAULTS = {
+  style: "aurora",
+  speed: 1.0,
+  intensity: 1.2,
+  blur: 40,
+  colors: ["#0B1B2B","#0E6F5C","#00CFFF"]
+};
+
+/* ===== DOM refs ===== */
+const canvas = $("#bg");
+const cssBg = $("#css-bg");
+const ctx = canvas.getContext("2d",{ alpha:true });
+const panel = $("#panel");
+const toggle = $("#toggle");
+const speed = $("#speed");
+const intensity = $("#intensity");
+const blur = $("#blur");
+const styleSel = $("#styleSel");
+const colorsWrap = $("#colors");
+const addColor = $("#addColor");
+const shuffleBtn = $("#shuffle");
+const pauseBtn = $("#pauseBtn");
+const resetBtn = $("#resetBtn");
+const saveBtn = $("#save");
+const loadBtn = $("#load");
+const exportBtn = $("#export");
+const importBtn = $("#import");
+const clearBtn = $("#clear");
+const jsonArea = $("#json");
+const speedVal = $("#speedVal");
+const toast = $("#toast");
+
+/* ===== State ===== */
+let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1.25));
+let W = 0, H = 0;
+let running = true;
+let lastT = 0;
+
+let state = loadLocal() || {...DEFAULTS};
+updateControlsFromState();
+applyStyleVisibility();
+
+let blobs = [];
+initBlobs();
+
+/* ===== Event wiring ===== */
+toggle.addEventListener("click", () => {
+  document.body.classList.toggle("panel-open");
+});
+
+styleSel.addEventListener("change", e => {
+  state.style = e.target.value;
+  applyStyleVisibility();
+  saveLocal();
+});
+
+speed.addEventListener("input", e => {
+  state.speed = +e.target.value;
+  speedVal.textContent = state.speed.toFixed(2) + "x";
+  document.documentElement.style.setProperty("--drift-s", (18/Math.max(.1,state.speed)).toFixed(2) + "s");
+  saveLocalThrottled();
+});
+intensity.addEventListener("input", e => {
+  state.intensity = +e.target.value;
+  resize(); // radius depends on size
+  saveLocalThrottled();
+});
+blur.addEventListener("input", e => {
+  state.blur = +e.target.value;
+  document.documentElement.style.setProperty("--blur-px", state.blur+"px");
+  saveLocalThrottled();
+});
+addColor.addEventListener("click", () => {
+  state.colors.push(randomColor());
+  renderColorRows();
+  initBlobs();
+  saveLocal();
+});
+shuffleBtn.addEventListener("click", () => {
+  state.colors = shuffle([...state.colors]);
+  renderColorRows();
+  initBlobs();
+  saveLocal();
+});
+pauseBtn.addEventListener("click", () => {
+  running = !running;
+  pauseBtn.setAttribute("aria-checked", String(!running));
+});
+resetBtn.addEventListener("click", () => {
+  state = {...DEFAULTS};
+  updateControlsFromState();
+  applyStyleVisibility();
+  initBlobs();
+  showToast("Reset");
+  saveLocal();
+});
+
+saveBtn.addEventListener("click", () => { saveLocal(); showToast("Saved"); });
+loadBtn.addEventListener("click", () => {
+  const s = loadLocal(); if(!s){ showToast("No preset"); return; }
+  state = {...DEFAULTS, ...s};
+  updateControlsFromState();
+  applyStyleVisibility();
+  initBlobs();
+  showToast("Loaded");
+});
+exportBtn.addEventListener("click", () => {
+  jsonArea.value = JSON.stringify(state, null, 2);
+  jsonArea.select(); document.execCommand("copy");
+  showToast("Preset copied");
+});
+importBtn.addEventListener("click", () => {
+  try{
+    const obj = JSON.parse(jsonArea.value);
+    if(!obj.colors || !obj.colors.length) throw 0;
+    state = {...DEFAULTS, ...obj};
+    updateControlsFromState(); applyStyleVisibility(); initBlobs(); saveLocal();
+    showToast("Imported");
+  }catch(e){ showToast("Invalid JSON"); }
+});
+clearBtn.addEventListener("click", () => {
+  localStorage.removeItem("oc_gradient_preset");
+  showToast("Cleared");
+});
+
+window.addEventListener("resize", resize);
+resize();
+renderColorRows();
+
+/* ===== Canvas Aurora Engine ===== */
+function initBlobs(){
+  const count = Math.max(3, state.colors.length);
+  blobs = [];
+  for(let i=0;i<count;i++){
+    blobs.push(makeBlob(i));
+  }
+}
+function makeBlob(i){
+  const speedScale = 0.3 + Math.random()*0.7;
+  const angle = Math.random()*Math.PI*2;
+  const v = (0.25 + Math.random()*0.75) * state.speed;
+  const baseR = 0.22 * Math.min(W,H) * state.intensity;
+  return {
+    x: Math.random()*W, y: Math.random()*H,
+    vx: Math.cos(angle)*v*speedScale, vy: Math.sin(angle)*v*speedScale,
+    r: baseR * (0.85 + Math.random()*0.3),
+    color: state.colors[i % state.colors.length],
+    wobble: Math.random()*Math.PI*2,
+    wobbleAmp: 0.08 + Math.random()*0.12,
+    wobbleSpeed: 0.6 + Math.random()*0.9
+  };
+}
+function step(dt){
+  const s = clamp(state.speed, 0, 4);
+  for(const b of blobs){
+    b.x += b.vx * dt * s;
+    b.y += b.vy * dt * s;
+    b.wobble += b.wobbleSpeed * dt * 0.001;
+    const wr = 1 + Math.sin(b.wobble)*b.wobbleAmp;
+    const rad = b.r * wr;
+
+    // bounce
+    if(b.x < -rad*0.2 || b.x > W+rad*0.2) b.vx *= -1, b.x = clamp(b.x, -rad*0.2, W+rad*0.2);
+    if(b.y < -rad*0.2 || b.y > H+rad*0.2) b.vy *= -1, b.y = clamp(b.y, -rad*0.2, H+rad*0.2);
+    b._drawR = rad;
+  }
+}
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.globalCompositeOperation = "source-over";
+  // Soft base
+  ctx.fillStyle = "#000"; ctx.fillRect(0,0,W,H);
+  ctx.globalCompositeOperation = "lighter";
+  for(const b of blobs){
+    const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b._drawR);
+    g.addColorStop(0, hexToRgba(b.color, .85));
+    g.addColorStop(.45, hexToRgba(b.color, .35));
+    g.addColorStop(1, hexToRgba(b.color, 0));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b._drawR, 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+function loop(t){
+  if(!lastT) lastT = t;
+  const dt = t - lastT; lastT = t;
+  if(running && state.style === "aurora"){ step(dt); draw(); }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ===== Helpers ===== */
+function resize(){
+  const rect = canvas.getBoundingClientRect();
+  W = Math.floor(rect.width * DPR);
+  H = Math.floor(rect.height * DPR);
+  canvas.width = W;
+  canvas.height = H;
+  ctx.setTransform(DPR,0,0,DPR,0,0); // scale drawing to device pixels
+  initBlobs();
+}
+
+function renderColorRows(){
+  colorsWrap.innerHTML = "";
+  state.colors.forEach((c, idx) => {
+    const row = el("div",{className:"color-row"});
+    const pick = el("input",{type:"color", value: toHex(c)});
+    pick.addEventListener("input", e => { state.colors[idx] = e.target.value; initBlobs(); saveLocalThrottled(); applyCssLinear(); });
+    const text = el("input",{className:"textish", value: c, spellcheck:false});
+    text.addEventListener("input", e => { state.colors[idx] = e.target.value; try{ pick.value = toHex(e.target.value);}catch{} initBlobs(); saveLocalThrottled(); applyCssLinear(); });
+    const del = el("button",{className:"del", innerText:"Remove"});
+    del.addEventListener("click", () => {
+      state.colors.splice(idx,1);
+      if(state.colors.length < 2) state.colors = [...DEFAULTS.colors];
+      renderColorRows(); initBlobs(); saveLocal();
+      applyCssLinear();
+    });
+    row.append(pick, text, del);
+    colorsWrap.append(row);
+  });
+  applyCssLinear();
+}
+function applyCssLinear(){
+  // update CSS gradient layer for "Linear Drift" style
+  cssBg.style.background = `linear-gradient(120deg, ${state.colors.join(",")})`;
+}
+
+function hexToRgba(hex, a=1){
+  // supports #RGB, #RRGGBB or rgb/rgba already
+  if(/^rgba?\(/i.test(hex)) return hex.replace(/\)$/,'').replace(/^rgb/,'rgba')+`,`+a+`)`;
+  hex = hex.replace('#','');
+  if(hex.length===3) hex = hex.split('').map(h=>h+h).join('');
+  const num = parseInt(hex,16);
+  const r = (num>>16)&255, g=(num>>8)&255, b=num&255;
+  return `rgba(${r},${g},${b},${a})`;
+}
+function toHex(c){
+  if(/^#([0-9A-F]{3}){1,2}$/i.test(c)) return c;
+  const m = c.match(/(\d+)[^\d]+(\d+)[^\d]+(\d+)/);
+  if(m){ const [_,r,g,b] = m; return '#'+[r,g,b].map(n=>(+n).toString(16).padStart(2,'0')).join('').toUpperCase(); }
+  return "#00CFFF";
+}
+function randomColor(){ return `#${Math.floor(Math.random()*0xFFFFFF).toString(16).padStart(6,'0')}`; }
+function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]];} return arr; }
+
+function showToast(msg){
+  toast.textContent = msg;
+  toast.classList.add("show");
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=>toast.classList.remove("show"), 1400);
+}
+
+/* ===== Persistence ===== */
+let saveTimer = 0;
+function saveLocal(){ localStorage.setItem("oc_gradient_preset", JSON.stringify(state)); }
+function saveLocalThrottled(){
+  clearTimeout(saveTimer); saveTimer = setTimeout(saveLocal, 200);
+}
+function loadLocal(){
+  try{ const s = localStorage.getItem("oc_gradient_preset"); return s ? JSON.parse(s) : null; }catch(e){ return null; }
+}
+function updateControlsFromState(){
+  styleSel.value = state.style;
+  speed.value = state.speed; speedVal.textContent = state.speed.toFixed(2) + "x";
+  intensity.value = state.intensity;
+  blur.value = state.blur; document.documentElement.style.setProperty("--blur-px", state.blur+"px");
+  renderColorRows();
+  document.documentElement.style.setProperty("--drift-s", (18/Math.max(.1,state.speed)).toFixed(2) + "s");
+}
+
+/* ===== Style switcher ===== */
+function applyStyleVisibility(){
+  if(state.style === "aurora"){
+    canvas.style.opacity = "1";
+    cssBg.style.opacity = "0";
+  }else{
+    canvas.style.opacity = "0";
+    cssBg.style.opacity = "1";
+  }
+}
+
+/* ===== Keyboard quick open (⌘/, Ctrl/) ===== */
+window.addEventListener("keydown", (e)=>{
+  if((e.metaKey||e.ctrlKey) && e.key === "/"){ e.preventDefault(); document.body.classList.toggle("panel-open"); }
+});
+</script>
+</body>
+</html>
